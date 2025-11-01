@@ -60,6 +60,8 @@ public class UseCase_Hire
         var error = Assert.Throws<ApplicationException>(()=> candidate.Validate());
         Assert.Equal("AnnualSalary must be greater than 0", error.Message);
     }
+
+   
 }
 
 public class HRDept
@@ -80,7 +82,7 @@ public class HRDept
         if (!dept.CanAfford(candidate.AnnualSalary))
             throw new InvalidOperationException("Not enough budget.");
 
-        var employee = candidate.Hired();
+        var employee = candidate.HireFor(dept);
         
         _it.Onboard(employee);
         _accounting.AddToPayroll(employee);
@@ -115,10 +117,10 @@ public class Candidate
             
     }
 
-    public Employee Hired()
+    public Employee HireFor(Dept dept)
     {
         Validate();
-        return new Employee(Name, AnnualSalary, Email);
+        return new Employee(Name, AnnualSalary, Email, dept.Name);
     }
 }
 
@@ -146,16 +148,18 @@ public class Dept
 
 public class Employee
 {
-    public Employee(string name, decimal salary, string email)
+    public Employee(string name, decimal salary, string email, string dept)
     {
         Name = name;
         Salary = salary;
         Email = email;
+        Dept = dept;
     }
     
     public string Name { get;}
     public decimal Salary { get; }
     public string Email { get; }
+    public string Dept { get; }
 }
 
 public class ITDept
