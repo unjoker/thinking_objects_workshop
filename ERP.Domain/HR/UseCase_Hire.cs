@@ -10,7 +10,7 @@ public class UseCase_Hire
         var accounting = new AccountingDept();
         var it = new ITDept();
         var hr = new HRDept(accounting, it);
-        var dept = new Dept(name: "R&D", budget: 300_000m);
+        var dept = new Budget(owner: "R&D", budget: 300_000m);
         var candidate = new Candidate(name: "Ava Thompson", email: "ava@acme.com", annualSalary: 100_000m);
         
         var employee = hr.Hire(candidate, dept);
@@ -19,7 +19,7 @@ public class UseCase_Hire
         Assert.Equal("ava@acme.com", employee.Email);
         Assert.True(accounting.PayrollAdded);
         Assert.True(it.AccountCreated);
-        Assert.Equal(200_000m, dept.Budget);
+        Assert.Equal(200_000m, dept.Available);
     }
 
     [Fact]
@@ -28,7 +28,7 @@ public class UseCase_Hire
         var accounting = new AccountingDept();
         var it = new ITDept();
         var hr = new HRDept(accounting, it);
-        var dept = new Dept(name: "R&D", budget: 50_000m);
+        var dept = new Budget(owner: "R&D", budget: 50_000m);
         var candidate = new Candidate(name: "Ava Thompson", email: "ava@acme.com", annualSalary: 100_000m);
         
         Assert.Throws<InvalidOperationException>(()=> hr.Hire(candidate, dept));
@@ -61,7 +61,27 @@ public class UseCase_Hire
         Assert.Equal("AnnualSalary must be greater than 0", error.Message);
     }
 
-   
+    [Fact]
+    public void ForProjectFundedBy2Depts()
+    {
+        var accounting = new AccountingDept();
+        var it = new ITDept();
+        var hr = new HRDept(accounting, it);
+        var budget1 = new Budget(owner: "R&D", budget: 300_000m);
+        var budget2 = new Budget(owner: "Marketing", budget: 50_000m);
+        var project = new SharedBudget(owner: "Organic 3D printer", [budget1, budget2]);
+        
+        var candidate = new Candidate(name: "Ava Thompson", email: "ava@acme.com", annualSalary: 50_000m);
+        
+        var employee = hr.Hire(candidate, project);
+        
+        Assert.NotNull(employee);
+        Assert.Equal("ava@acme.com", employee.Email);
+        Assert.True(accounting.PayrollAdded);
+        Assert.True(it.AccountCreated);
+        Assert.Equal(300_000m, project.Available);
+        
+    }
 }
 
 public class HRDept
@@ -75,18 +95,19 @@ public class HRDept
         _it = it;
     }
 
-    public Employee Hire(Candidate candidate, Dept dept)
+    public Employee Hire(Candidate candidate, IBudget sponsor)
     {
         candidate.Validate();
         
-        if (!dept.CanAfford(candidate.AnnualSalary))
+        if (!sponsor.CanAfford(candidate.AnnualSalary))
             throw new InvalidOperationException("Not enough budget.");
 
-        var employee = candidate.HireFor(dept);
+        var employee = candidate.HireFor(sponsor);
         
         _it.Onboard(employee);
         _accounting.AddToPayroll(employee);
-        dept.Spend(candidate.AnnualSalary);
+        sponsor.Spend(employee.Salary);
+        
         return employee;
     }
 }
@@ -117,49 +138,85 @@ public class Candidate
             
     }
 
-    public Employee HireFor(Dept dept)
+    public Employee HireFor(IBudget sponsor)
     {
         Validate();
-        return new Employee(Name, AnnualSalary, Email, dept.Name);
+        return new Employee(Name, AnnualSalary, Email, sponsor.Owner);
     }
 }
 
-public class Dept
+public interface IBudget
 {
-    public Dept(string name, decimal budget)
+    string Owner { get; }
+    decimal Available { get; }
+    bool CanAfford(decimal amount);
+    void Spend(decimal amount);
+}
+
+public class Budget : IBudget
+{
+    public Budget(string owner, decimal budget)
     {
-        Name = name;
-        Budget = budget;
+        Owner = owner;
+        Available = budget;
     }
 
-    public string Name { get; }
-    public decimal Budget { get; private set; }
+    public string Owner { get; }
+    public decimal Available { get; private set; }
 
     public bool CanAfford(decimal amount)
     {
-        return amount <= Budget;
+        return amount <= Available;
     }
 
     public void Spend(decimal amount)
     {
-        Budget -= amount;
+        Available -= amount;
+    }
+}
+
+public class SharedBudget: IBudget
+{
+    Budget[] _budgets;
+
+    public SharedBudget(string owner, Budget[] budgets)
+    {
+        Owner =  owner;
+        _budgets = budgets;
+    }
+
+    public string Owner { get; }
+    public decimal Available => _budgets.Sum(b => b.Available);
+    public bool CanAfford(decimal amount)
+    {
+        var total = _budgets.Sum(b => b.Available);
+        return total >= amount;
+    }
+
+    public void Spend(decimal amount)
+    {
+        var charge = amount / _budgets.Length;
+        foreach (var budget in _budgets)
+        {
+            budget.Spend(charge);
+        }
     }
 }
 
 public class Employee
 {
-    public Employee(string name, decimal salary, string email, string dept)
+    public Employee(string name, decimal salary, string email, string sponsor)
     {
         Name = name;
         Salary = salary;
         Email = email;
-        Dept = dept;
+        Sponsor = sponsor;
     }
     
     public string Name { get;}
     public decimal Salary { get; }
     public string Email { get; }
-    public string Dept { get; }
+    public string Sponsor { get; }
 }
 
 public class ITDept
