@@ -97,8 +97,6 @@ public class HRDept
 
     public Employee Hire(Candidate candidate, IBudget sponsor)
     {
-        candidate.Validate();
-        
         if (!sponsor.CanAfford(candidate.AnnualSalary))
             throw new InvalidOperationException("Not enough budget.");
 
